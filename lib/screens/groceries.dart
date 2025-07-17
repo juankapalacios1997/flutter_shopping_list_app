@@ -21,6 +21,7 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
   List<GroceryItem> groceryItems = [];
 
   var isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -33,33 +34,52 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
       'shopping-list-app-5a953-default-rtdb.firebaseio.com',
       'shopping-list.json',
     );
-    
-    final response = await http.get(
-      url,
-    );
 
-    final Map<String, dynamic> parsedRes = jsonDecode(response.body);
+    try {
+      final response = await http.get(
+        url,
+      );
 
-    final List<GroceryItem> loadedItems = [];
+      if (response.statusCode >= 400) {
+        throw Exception(
+          'An error ocurred!'
+        );
+      }
 
-    for (final item in parsedRes.entries) {
-      final category = categories.entries.firstWhere((element) =>
-        element.value.name == item.value['category']
-      ).value;
+      if (response.body == 'null') {
+        setState(() {
+          isLoading = false;
+        });
+        return;
+      }
+
+      final Map<String, dynamic> parsedRes = jsonDecode(response.body);
+
+      final List<GroceryItem> loadedItems = [];
+
+      for (final item in parsedRes.entries) {
+        final category = categories.entries.firstWhere((element) =>
+          element.value.name == item.value['category']
+        ).value;
 
 
-      loadedItems.add(GroceryItem(
-        id: item.key, 
-        name: item.value['name'], 
-        quantity: item.value['quantity'], 
-        category: category,
-      ));
+        loadedItems.add(GroceryItem(
+          id: item.key, 
+          name: item.value['name'], 
+          quantity: item.value['quantity'], 
+          category: category,
+        ));
+      }
+
+      setState(() {
+        groceryItems = loadedItems;
+        isLoading = false;
+      });
+    } catch(error) {
+      setState(() {
+        _error = 'Something went wrong. Please try again later.';
+      });
     }
-
-    setState(() {
-      groceryItems = loadedItems;
-      isLoading = false;
-    });
   }
 
   void _addItem() async {
@@ -76,14 +96,36 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
     setState(() {
       groceryItems.add(newItem);
     });
-
-    // _loadItems();
   }
 
-  void removeItem(GroceryItem item) {
+  void removeItem(GroceryItem item) async{
+    final index = groceryItems.indexOf(item);
+
     setState(() {
       groceryItems.remove(item);
     });
+
+    final url = Uri.https(
+      'shopping-list-app-5a953-default-rtdb.firebaseio.com',
+      'shopping-list/${item.id}.json',
+    );
+
+    final response = await http.delete(url);
+
+    if (response.statusCode >= 400) {
+      ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Failed to remove data. Please try again later.'),
+        duration: Duration(
+          milliseconds: 2000,
+        ),
+      )
+    );
+      setState(() {
+        groceryItems.insert(index, item);
+      });
+    }
+    
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -111,6 +153,12 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
       content = GroceryList(
         list: groceryItems,
         onDismiss: removeItem,
+      );
+    }
+
+    if (_error != null) {
+      content = Center(
+        child: Text(_error!),
       );
     }
 
